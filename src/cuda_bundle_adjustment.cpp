@@ -1,20 +1,4 @@
-﻿/*
-Copyright 2020 Fixstars Corporation
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http ://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-#include "cuda_bundle_adjustment.h"
+﻿#include "cuda_bundle_adjustment.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -50,7 +34,8 @@ namespace cuba
 	template <typename T>
 	static constexpr Scalar ScalarCast(T v) { return static_cast<Scalar>(v); }
 
-	/** @brief Implementation of Block solver.
+	/*
+	* @brief Implementation of Block solver.
 	*/
 	class CudaBlockSolver
 	{
@@ -584,7 +569,8 @@ namespace cuba
 		std::vector<double> profItems_;
 	};
 
-	/** @brief Implementation of CudaBundleAdjustment.
+	/*
+	* @brief Implementation of CudaBundleAdjustment.
 	*/
 	class CudaBundleAdjustmentImpl : public CudaBundleAdjustment
 	{
