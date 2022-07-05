@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright 2020 Fixstars Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,7 @@ limitations under the License.
 #include <g2o/core/optimization_algorithm_levenberg.h>
 #include <g2o/solvers/eigen/linear_solver_eigen.h>
 #include <g2o/types/sba/types_six_dof_expmap.h>
+#include <g2o/types/slam3d/vertex_pointxyz.h>
 
 #include <cuda_bundle_adjustment.h>
 #include <object_creator.h>
@@ -41,11 +42,11 @@ static cuba::ObjectCreator obj;
 
 int main(int argc, char** argv)
 {
-	if (argc < 2)
+	/*if (argc < 2)
 	{
 		std::cout << "Usage: sample_comparison_with_g2o input.json" << std::endl;
 		return 0;
-	}
+	}*/
 
 	auto optimizerCPU = std::make_unique<OptimizerCPU>();
 	auto optimizerGPU = OptimizerGPU::create();
@@ -54,7 +55,9 @@ int main(int argc, char** argv)
 
 	std::cout << "Reading Graph... " << std::flush;
 
-	readGraph(argv[1], *optimizerCPU, *optimizerGPU, poseIds, landmarkIds);
+	std::string filename =
+		"F:\\Users\\Admin\\Desktop\\git\\cuda-bundle-adjustment\\samples\\ba_input\\ba_kitti_00.json";
+	readGraph(filename, *optimizerCPU, *optimizerGPU, poseIds, landmarkIds);
 
 	std::cout << "Done." << std::endl << std::endl;
 
@@ -134,6 +137,7 @@ int main(int argc, char** argv)
 	std::printf("Translation : %.2e\n", sqrt(errorSqT / poseIds.size()));
 	std::printf("Landmark    : %.2e\n", sqrt(errorSqP / landmarkIds.size()));
 
+	system("pause");
 	return 0;
 }
 

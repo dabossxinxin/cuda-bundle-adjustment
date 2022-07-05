@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright 2020 Fixstars Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,15 +30,17 @@ static cuba::ObjectCreator obj;
 
 int main(int argc, char** argv)
 {
-	if (argc < 2)
+	/*if (argc < 2)
 	{
 		std::cout << "Usage: sample_ba_from_file input.json" << std::endl;
 		return 0;
-	}
+	}*/
 
 	std::cout << "Reading Graph... " << std::flush;
 
-	auto optimizer = readGraph(argv[1]);
+	std::string filename =
+		"F:\\Users\\Admin\\Desktop\\git\\cuda-bundle-adjustment\\samples\\ba_input\\ba_kitti_00.json";
+	auto optimizer = readGraph(filename.c_str());
 
 	std::cout << "Done." << std::endl << std::endl;
 
@@ -63,14 +65,15 @@ int main(int argc, char** argv)
 	std::cout << "=== Processing time : " << std::endl;
 	std::printf("BA total : %.2f[sec]\n\n", duration01);
 
-	for (const auto& [name, value] : optimizer->timeProfile())
-		std::printf("%-30s : %8.1f[msec]\n", name.c_str(), 1e3 * value);
+	for (const auto& itTimeProfile : optimizer->timeProfile())
+		std::printf("%-30s : %8.1f[msec]\n", itTimeProfile.first.c_str(), 1e3 * itTimeProfile.second);
 	std::cout << std::endl;
 
 	std::cout << "=== Objective function value : " << std::endl;
 	for (const auto& stat : optimizer->batchStatistics())
 		std::printf("iter: %2d, chi2: %.1f\n", stat.iteration + 1, stat.chi2);
 
+	system("pause");
 	return 0;
 }
 

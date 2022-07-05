@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright 2020 Fixstars Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,44 +21,45 @@ limitations under the License.
 
 namespace cuba
 {
+	struct BaseObject {
+		BaseObject() {}
+		virtual ~BaseObject() {}
+	};
 
-struct BaseObject { virtual ~BaseObject() {} };
-
-template <class T>
-struct Object : public BaseObject
-{
-	Object(T* ptr = nullptr) : ptr(ptr) {}
-	~Object() { delete ptr; }
-	T* ptr;
-};
-
-class ObjectCreator
-{
-public:
-
-	ObjectCreator() {}
-	~ObjectCreator() { release(); }
-
-	template <class T, class... Args>
-	T* create(Args&&... args)
+	template <class T>
+	struct Object : public BaseObject
 	{
-		T* ptr = new T(std::forward<Args>(args)...);
-		objects_.push_back(new Object(ptr));
-		return ptr;
-	}
+		Object(T* ptr = nullptr) : ptr(ptr) {}
+		~Object() { delete ptr; }
+		T* ptr;
+	};
 
-	void release()
+	class ObjectCreator
 	{
-		for (auto ptr : objects_)
-			delete ptr;
-		objects_.clear();
-	}
+	public:
 
-private:
+		ObjectCreator() {}
+		~ObjectCreator() { release(); }
 
-	std::vector<BaseObject*> objects_;
-};
+		template <class T, class... Args>
+		T* create(Args&&... args)
+		{
+			T* ptr = new T(std::forward<Args>(args)...);
+			objects_.push_back(new Object<T>(ptr));
+			return ptr;
+		}
+
+		void release()
+		{
+			for (auto ptr : objects_)
+				delete ptr;
+			objects_.clear();
+		}
+
+	private:
+
+		std::vector<BaseObject*> objects_;
+	};
 
 } // namespace cuba
-
 #endif // !__OBJECT_CREATOR_H__

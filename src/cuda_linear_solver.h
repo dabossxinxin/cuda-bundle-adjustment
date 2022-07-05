@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright 2020 Fixstars Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,18 +25,18 @@ limitations under the License.
 namespace cuba
 {
 
-class SparseLinearSolver
-{
-public:
+	class SparseLinearSolver
+	{
+	public:
 
-	using Ptr = std::unique_ptr<SparseLinearSolver>;
-	static Ptr create();
+		using Ptr = std::unique_ptr<SparseLinearSolver>;
+		static Ptr create();
 
-	virtual void initialize(const HschurSparseBlockMatrix& Hsc) = 0;
-	virtual bool solve(const Scalar* d_A, const Scalar* d_b, Scalar* d_x) = 0;
+		virtual void initialize(const HschurSparseBlockMatrix& Hsc) = 0;
+		virtual bool solve(const Scalar* d_A, const Scalar* d_b, Scalar* d_x) = 0;
 
-	virtual ~SparseLinearSolver();
-};
+		virtual ~SparseLinearSolver();
+	};
 
 } // namespace cuba
 
