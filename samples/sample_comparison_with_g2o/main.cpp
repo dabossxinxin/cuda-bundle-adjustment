@@ -56,7 +56,7 @@ int main(int argc, char** argv)
 	std::cout << "Reading Graph... " << std::flush;
 
 	std::string filename =
-		"F:\\Users\\Admin\\Desktop\\git\\cuda-bundle-adjustment\\samples\\ba_input\\ba_kitti_00.json";
+		"F:\\Users\\Admin\\Desktop\\git\\cuda-bundle-adjustment\\samples\\ba_input\\ba_kitti_07.json";
 	readGraph(filename, *optimizerCPU, *optimizerGPU, poseIds, landmarkIds);
 
 	std::cout << "Done." << std::endl << std::endl;
