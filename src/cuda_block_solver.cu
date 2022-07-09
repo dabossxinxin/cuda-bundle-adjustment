@@ -14,7 +14,6 @@ namespace cuba
 {
 	namespace gpu
 	{
-
 		////////////////////////////////////////////////////////////////////////////////////
 		// Type alias
 		////////////////////////////////////////////////////////////////////////////////////
@@ -38,6 +37,10 @@ namespace cuba
 		constexpr int BLOCK_MAX_DIAGONAL = 512;
 		constexpr int BLOCK_COMPUTE_SCALE = 512;
 
+		/*!
+		* @brief 定义相机内参为常量内存
+		* @detail 该内存形式对于内核代码只读，对于主机可读可写
+		*/
 		__constant__ Scalar c_camera[5];
 #define FX() c_camera[0]
 #define FY() c_camera[1]
@@ -68,6 +71,9 @@ namespace cuba
 			}
 		};
 
+		/*!
+		* @brief 矩阵的列主表示方式
+		*/
 		template <typename T, int ROWS, int COLS>
 		struct MatView
 		{
@@ -105,6 +111,12 @@ namespace cuba
 		////////////////////////////////////////////////////////////////////////////////////
 		// Host functions
 		////////////////////////////////////////////////////////////////////////////////////
+		/*!
+		* @brief GPU核函数中用于计算所需Block的数量
+		* @param[in]	total	待计算的数据维度
+		* @param[in]	grain	GPU中block的维度
+		* @return		int		GPU中block的数量
+		*/
 		static int divUp(int total, int grain)
 		{
 			return (total + grain - 1) / grain;
@@ -114,7 +126,10 @@ namespace cuba
 		// Device functions (template matrix and verctor operation)
 		////////////////////////////////////////////////////////////////////////////////////
 
-		// assignment operations
+		/*!
+		* @brief 定义一些简单的赋值操作
+		* @detail 包含加、减、原子加、原子减
+		*/
 		using AssignOP = void(*)(Scalar*, Scalar);
 		__device__ inline void ASSIGN(Scalar* address, Scalar value) { *address = value; }
 		__device__ inline void ACCUM(Scalar* address, Scalar value) { *address += value; }
@@ -122,13 +137,17 @@ namespace cuba
 		__device__ inline void ACCUM_ATOMIC(Scalar* address, Scalar value) { atomicAdd(address, value); }
 		__device__ inline void DEACCUM_ATOMIC(Scalar* address, Scalar value) { atomicAdd(address, -value); }
 
-		// recursive dot product for inline expansion
+		/*!
+		* @brief 迭代计算两向量的点积
+		* @param[in]	a		向量a
+		* @param[in]	b		向量b
+		* @return		Scalar	向量点积
+		*/
 		template <int N>
 		__device__ inline Scalar dot_(const Scalar* a, const Scalar* b)
 		{
 			return dot_<N - 1>(a, b) + a[N - 1] * b[N - 1];
 		}
-
 		template <>
 		__device__ inline Scalar dot_<1>(const Scalar* a, const Scalar* b) { return a[0] * b[0]; }
 
@@ -140,7 +159,6 @@ namespace cuba
 			static_assert(S2 == 1 || S2 == PDIM, "S2 must be 1 or PDIM");
 			return dot_stride_<N - 1, S1, S2>(a, b) + a[S1 * (N - 1)] * b[S2 * (N - 1)];
 		}
-
 		template <>
 		__device__ inline Scalar dot_stride_<1, PDIM, 1>(const Scalar* a, const Scalar* b) { return a[0] * b[0]; }
 		template <>
@@ -148,7 +166,15 @@ namespace cuba
 		template <>
 		__device__ inline Scalar dot_stride_<1, PDIM, PDIM>(const Scalar* a, const Scalar* b) { return a[0] * b[0]; }
 
-		// matrix(tansposed)-vector product: b = AT*x
+		/*!
+		* @brief 矩阵(转置)-向量相乘：b=AT*x
+		* @detail #pragma unroll为编译选项控制循环展开
+		*         从而在运行时获取更高的运行效率
+		* @param[in]	A		矩阵A(MxN)
+		* @param[in]	x		向量x(Nx1)
+		* @param[out]	b		相乘结果(Mx1)
+		* @param[in]	omega	标量系数(1x1)
+		*/
 		template <int M, int N, AssignOP OP = ASSIGN>
 		__device__ inline void MatTMulVec(const Scalar* A, const Scalar* x, Scalar* b, Scalar omega)
 		{
@@ -156,8 +182,16 @@ namespace cuba
 			for (int i = 0; i < M; i++)
 				OP(b + i, omega * dot_<N>(A + i * N, x));
 		}
-
-		// matrix(tansposed)-matrix product: C = AT*B
+ 
+		/*!
+		* @brief 矩阵-矩阵相乘:C = AT*B
+		* @detail #pragma unroll为编译选项控制循环展开
+		*         从而在运行时获取更高的运行效率
+		* @param[in]	A		矩阵A(LxM)
+		* @param[in]	B		矩阵B(MxN)
+		* @param[out]	C		矩阵C(LxN)
+		* @param[in]	omega	标量系数(1x1)
+		*/
 		template <int L, int M, int N, AssignOP OP = ASSIGN>
 		__device__ inline void MatTMulMat(const Scalar* A, const Scalar* B, Scalar* C, Scalar omega)
 		{
@@ -193,21 +227,52 @@ namespace cuba
 				MatMulVec<L, M, N, OP>(A, B + i, C + i * L);
 		}
 
-		// squared L2 norm
+		/*!
+		* @brief 获取两向量之间的平方模
+		* @detail L2-Norm
+		* @param[in]	x		输入向量
+		* @return		Scalar	模值平方
+		*/
 		template <int N>
 		__device__ inline Scalar squaredNorm(const Scalar* x) { return dot_<N>(x, x); }
+
+		/*!
+		* @brief 获取两向量之间的模
+		* @detail L2-Norm
+		* @param[in]	x		输入向量
+		* @return		Scalar	模值平方
+		*/
 		template <int N>
 		__device__ inline Scalar squaredNorm(const Vecxd<N>& x) { return squaredNorm<N>(x.data); }
 
-		// L2 norm
+		/*!
+		* @brief 获取两向量之间的模
+		* @detail L2-Norm
+		* @param[in]	x		输入向量
+		* @return		Scalar	模值
+		*/
 		template <int N>
 		__device__ inline Scalar norm(const Scalar* x) { return sqrt(squaredNorm<N>(x)); }
+
+		/*!
+		* @brief 获取两向量之间的模
+		* @detail L2-Norm
+		* @param[in]	x		输入向量
+		* @return		Scalar	模值
+		*/
 		template <int N>
 		__device__ inline Scalar norm(const Vecxd<N>& x) { return norm<N>(x.data); }
 
 		////////////////////////////////////////////////////////////////////////////////////
 		// Device functions
 		////////////////////////////////////////////////////////////////////////////////////
+
+		/*!
+		* @brief 求解向量之间的叉积
+		* @param[in]	a	输入向量a
+		* @param[in]	b	输入向量b
+		* @param[out]	c	输出向量c
+		*/
 		__device__ static inline void cross(const Vec4d& a, const Vec3d& b, Vec3d& c)
 		{
 			c[0] = a[1] * b[2] - a[2] * b[1];
@@ -215,6 +280,12 @@ namespace cuba
 			c[2] = a[0] * b[1] - a[1] * b[0];
 		}
 
+		/*!
+		* @brief 使用四元數求解旋转 TODO:推导有点问题
+		* @param[in]	q	四元数形式旋转
+		* @param[in]	Xw	世界坐标系下的路标点信息
+		* @param[out]	Xc	相机坐标系下的路标点投影
+		*/
 		__device__ inline void rotate(const Vec4d& q, const Vec3d& Xw, Vec3d& Xc)
 		{
 			Vec3d tmp1, tmp2;
@@ -232,6 +303,14 @@ namespace cuba
 			Xc[2] = Xw[2] + q[3] * tmp1[2] + tmp2[2];
 		}
 
+
+		/*!
+		* @brief 使用四元数与平移向量将路标点转换到相机系中
+		* @param[in]	q	旋转四元数
+		* @param[in]	t	平移向量
+		* @param[in]	Xw	路标点世界坐标
+		* @param[out]	Xc	路标点相机投影
+		*/
 		__device__ inline void projectW2C(const Vec4d& q, const Vec3d& t, const Vec3d& Xw, Vec3d& Xc)
 		{
 			rotate(q, Xw, Xc);
@@ -245,6 +324,11 @@ namespace cuba
 		{
 		}
 
+		/*!
+		* @brief 使用已知的相机内参将相机坐标转换到像素坐标(Mono)
+		* @param[in]	Xc	路标点相机坐标系坐标
+		* @param[out]	p	路标点像素坐标系坐标
+		*/
 		template <>
 		__device__ inline void projectC2I<2>(const Vec3d& Xc, Vec2d& p)
 		{
@@ -253,6 +337,11 @@ namespace cuba
 			p[1] = FY() * invZ * Xc[1] + CY();
 		}
 
+		/*!
+		* @brief 使用已知的相机内参将相机坐标转换到像素坐标(Bino)
+		* @param[in]	Xc	路标点相机坐标系坐标
+		* @param[out]	p	路标点像素坐标系坐标
+		*/
 		template <>
 		__device__ inline void projectC2I<3>(const Vec3d& Xc, Vec3d& p)
 		{
@@ -262,6 +351,11 @@ namespace cuba
 			p[2] = p[0] - BF() * invZ;
 		}
 
+		/*!
+		* @brief 将四元数转换为旋转矩阵格式
+		* @param[in]	q	旋转的四元数表示形式
+		* @param[out]	R	旋转的旋转矩阵表示形式
+		*/
 		__device__ inline void quaternionToRotationMatrix(const Vec4d& q, MatView3x3d R)
 		{
 			const Scalar x = q[0];
@@ -299,6 +393,14 @@ namespace cuba
 		{
 		}
 
+		/*!
+		* @brief 计算残差关于Pose与LandMark的雅可比(Mono)
+		* @detail 误差的定义为：观测值-预测值
+		* @param[in]	Xc	路标点在相机坐标系下的投影
+		* @param[in]	q	世界系->相机系的旋转四元数
+		* @param[out]	JP	重投影误差关于Pose的雅可比
+		* @param[out]	JL	重投影误差关于LandMark的雅可比
+		*/
 		template <>
 		__device__ void computeJacobians<2>(const Vec3d& Xc, const Vec4d& q, MatView2x6d JP, MatView2x3d JL)
 		{
@@ -338,6 +440,13 @@ namespace cuba
 			JP(1, 5) = +fv_invZ * y;
 		}
 
+		/*!
+		* @brief 计算残差关于Pose与LandMark的雅可比(Bino)
+		* @param[in]	Xc	路标点在相机坐标系下的投影
+		* @param[in]	q	世界系->相机系的旋转四元数
+		* @param[out]	JP	重投影误差关于Pose的雅可比
+		* @param[out]	JL	重投影误差关于LandMark的雅可比
+		*/
 		template <>
 		__device__ void computeJacobians<3>(const Vec3d& Xc, const Vec4d& q, MatView3x6d JP, MatView3x3d JL)
 		{
@@ -387,6 +496,11 @@ namespace cuba
 			JP(2, 5) = JP(0, 5) - bf * invZZ;
 		}
 
+		/*!
+		* @brief 求解对称矩阵A的逆矩阵
+		* @param[in]	A	输入对称矩阵
+		* @param[out]	B	对称矩阵逆矩阵
+		*/
 		__device__ inline void Sym3x3Inv(ConstMatView3x3d A, MatView3x3d B)
 		{
 			const Scalar A00 = A(0, 0);
@@ -424,6 +538,13 @@ namespace cuba
 			B(2, 2) = B22;
 		}
 
+		/*!
+		* @brief 将向量转化为反对称矩阵形式
+		* @param[in]	x	三维向量第一分量
+		* @param[in]	y	三维向量第二分量
+		* @param[in]	z	三维向量第三分量
+		* @param[out]	M	向量反对称形式
+		*/
 		__device__ inline void skew1(Scalar x, Scalar y, Scalar z, MatView3x3d M)
 		{
 			M(0, 0) = +0; M(0, 1) = -z; M(0, 2) = +y;
@@ -431,6 +552,13 @@ namespace cuba
 			M(2, 0) = -y; M(2, 1) = +x; M(2, 2) = +0;
 		}
 
+		/*!
+		* @brief 将向量转化为反对称矩阵形式并取平方
+		* @param[in]	x	三维向量第一分量
+		* @param[in]	y	三维向量第二分量
+		* @param[in]	z	三维向量第三分量
+		* @param[out]	M	向量反对称形式平方
+		*/
 		__device__ inline void skew2(Scalar x, Scalar y, Scalar z, MatView3x3d M)
 		{
 			const Scalar xx = x * x;
@@ -446,6 +574,15 @@ namespace cuba
 			M(2, 0) = +zx;      M(2, 1) = +yz;      M(2, 2) = -xx - yy;
 		}
 
+		/*!
+		* @brief 矩阵的加法运算：R=a1*O1+a2*O2+I
+		* @detail 用于求解向量空间到群空间的映射
+		* @param[in]	a1	系数1
+		* @param[in]	O1	向量空间反对称形式
+		* @param[in]	a2	系数2
+		* @param[in]	O2	向量空间反对称形式平方
+		* @return		R	输出结果
+		*/
 		__device__ inline void addOmega(Scalar a1, ConstMatView3x3d O1, Scalar a2, ConstMatView3x3d O2,
 			MatView3x3d R)
 		{
@@ -462,6 +599,11 @@ namespace cuba
 			R(2, 2) = 1 + a1 * O1(2, 2) + a2 * O2(2, 2);
 		}
 
+		/*!
+		* @brief 将旋转矩阵转换为四元数表示：TODO
+		* @param[in]	R	旋转矩阵
+		* @param[out]	q	四元数形式
+		*/
 		__device__ inline void rotationMatrixToQuaternion(ConstMatView3x3d R, Vec4d& q)
 		{
 			Scalar t = R(0, 0) + R(1, 1) + R(2, 2);
@@ -493,6 +635,12 @@ namespace cuba
 			}
 		}
 
+		/*!
+		* @brief 求解两个四元数的乘积
+		* @param[in]	a	输入四元数a
+		* @param[in]	b	输入四元数b
+		* @param[out]	c	输出四元数c
+		*/
 		__device__ inline void multiplyQuaternion(const Vec4d& a, const Vec4d& b, Vec4d& c)
 		{
 			c[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
@@ -501,6 +649,11 @@ namespace cuba
 			c[2] = a[3] * b[2] + a[2] * b[3] + a[0] * b[1] - a[1] * b[0];
 		}
 
+		/*!
+		* @brief 求解单位四元数
+		* @param[in]	a	输入四元数a
+		* @param[out]	b	输出单位四元数b
+		*/
 		__device__ inline void normalizeQuaternion(const Vec4d& a, Vec4d& b)
 		{
 			Scalar invn = 1 / norm(a);
@@ -511,6 +664,12 @@ namespace cuba
 				b[i] = invn * a[i];
 		}
 
+		/*!
+		* @brief 将参数从向量空间转化到群空间：TODO
+		* @param[in]	update	状态量向量空间：旋转在前平移在后
+		* @param[in]	q		状态量群空间旋转分量
+		* @param[out]	t		状态量群空间平移分量
+		*/
 		__device__ inline void updateExp(const Scalar* update, Vec4d& q, Vec3d& t)
 		{
 			Vec3d omega(update);
@@ -532,7 +691,7 @@ namespace cuba
 			{
 				const Scalar a1 = sin(theta) / theta;
 				const Scalar a2 = (1 - cos(theta)) / (theta * theta);
-				const Scalar a3 = (theta - sin(theta)) / (pow(theta, 3));
+				const Scalar a3 = (theta - sin(theta)) / (theta * theta * theta);
 				addOmega(a1, O1, a2, O2, R);
 				addOmega(a2, O1, a3, O2, V);
 			}
@@ -541,6 +700,13 @@ namespace cuba
 			MatMulVec<3, 3>(V, upsilon.data, t.data);
 		}
 
+		/*!
+		* @brief 更新上一时刻Pose
+		* @param[in]	q1	上一时刻Pose旋转分量
+		* @param[in]	t1	上一时刻Pose平移分量
+		* @param[in]	q2	当前时刻到上一时刻的旋转更新量
+		* @param[in]	t2	当前时刻到上一时刻的平移更新量
+		*/
 		__device__ inline void updatePose(const Vec4d& q1, const Vec3d& t1, Vec4d& q2, Vec3d& t2)
 		{
 			Vec3d u;
@@ -554,6 +720,12 @@ namespace cuba
 			normalizeQuaternion(r, q2);
 		}
 
+		/*!
+		* @brief 将src指针中的内容拷贝至dst指针中
+		* @detail 由于数据在不同指针中发生转移，构成深拷贝
+		* @param[in]	src	原始指针数据
+		* @param[in]	dst	目标指针数据
+		*/
 		template <int N>
 		__device__ inline void copy(const Scalar* src, Scalar* dst)
 		{
@@ -561,6 +733,13 @@ namespace cuba
 				dst[i] = src[i];
 		}
 
+		/*!
+		* @brief 构造三维整型向量
+		* @param[in]	i		三维整型向量第一维
+		* @param[in]	j		三维整型向量第二维
+		* @param[in]	k		三维整型向量第三维
+		* @return		Vec3i	输出三维整型向量
+		*/
 		__device__ inline Vec3i makeVec3i(int i, int j, int k)
 		{
 			Vec3i  vec;
@@ -929,11 +1108,23 @@ namespace cuba
 		// Public functions
 		////////////////////////////////////////////////////////////////////////////////////
 
+		/*!
+		* @berif 等待CUDA核函数运行完成
+		* @detail 运行核函数后，设备与主机异步，
+		*	      此时通过该函数同步设备与主机
+		*/
 		void waitForKernelCompletion()
 		{
 			CUDA_CHECK(cudaDeviceSynchronize());
 		}
 
+		/*!
+		* @berif 设置相机的内参作为相机非线性优化的输入
+		* @detail 使用GPU进行优化时，相机内参在常量内存中设置，
+		*		  因此必须使用cudaMemcpyToSymbol运行时函数进行
+		*		  初始化。
+		* @param[in]	camera	相机内参
+		*/
 		void setCameraParameters(const Scalar* camera)
 		{
 			CUDA_CHECK(cudaMemcpyToSymbol(c_camera, camera, sizeof(Scalar) * 5));
@@ -956,11 +1147,20 @@ namespace cuba
 
 			auto ptrBlockPos = thrust::device_pointer_cast(blockpos.data());
 			thrust::sort(ptrBlockPos, ptrBlockPos + nblocks, LessColId());
-
 			CUDA_CHECK(cudaMemset(nnzPerCol, 0, sizeof(int) * (Hpl.cols() + 1)));
-			nnzPerColKernel << <grid, block >> > (blockpos, nblocks, nnzPerCol);
+
+			nnzPerColKernel << <grid, block >> > (
+				blockpos, 
+				nblocks, 
+				nnzPerCol
+				);
 			exclusiveScan(nnzPerCol, colPtr, Hpl.cols() + 1);
-			setRowIndKernel << <grid, block >> > (blockpos, nblocks, rowInd, indexPL);
+			setRowIndKernel << <grid, block >> > (
+				blockpos, 
+				nblocks, 
+				rowInd, 
+				indexPL
+				);
 		}
 
 		void findHschureMulBlockIndices(const GpuHplBlockMat& Hpl, const GpuHscBlockMat& Hsc,
@@ -993,8 +1193,17 @@ namespace cuba
 				return 0;
 
 			CUDA_CHECK(cudaMemset(chi, 0, sizeof(Scalar)));
-			computeActiveErrorsKernel<M> << <grid, block >> > (nedges, qs, ts, Xws, measurements, omegas,
-				edge2PL, errors, Xcs, chi);
+			computeActiveErrorsKernel<M> << <grid, block >> > (
+				nedges, 
+				qs, ts, 
+				Xws, 
+				measurements, 
+				omegas,
+				edge2PL, 
+				errors, 
+				Xcs,
+				chi
+				);
 			CUDA_CHECK(cudaGetLastError());
 
 			Scalar h_chi = 0;
@@ -1029,8 +1238,21 @@ namespace cuba
 			if (nedges <= 0)
 				return;
 
-			constructQuadraticFormKernel<M> << <grid, block >> > (nedges, Xcs, qs, errors, omegas, edge2PL,
-				edge2Hpl, flags, Hpp, bp, Hll, bl, Hpl);
+			constructQuadraticFormKernel<M> << <grid, block >> > (
+				nedges, 
+				Xcs, 
+				qs, 
+				errors, 
+				omegas, 
+				edge2PL,
+				edge2Hpl,
+				flags, 
+				Hpp,
+				bp, 
+				Hll, 
+				bl, 
+				Hpl
+				);
 			CUDA_CHECK(cudaGetLastError());
 		}
 
@@ -1055,7 +1277,11 @@ namespace cuba
 			constexpr int grid = 4;
 			const int size = D.size() * DIM;
 
-			maxDiagonalKernel<DIM> << <grid, block >> > (size, D.values(), maxD);
+			maxDiagonalKernel<DIM> << <grid, block >> > (
+				size, 
+				D.values(),
+				maxD
+				);
 			CUDA_CHECK(cudaGetLastError());
 
 			Scalar tmpMax[grid];
@@ -1104,7 +1330,11 @@ namespace cuba
 			const int size = D.size() * DIM;
 			const int block = 1024;
 			const int grid = divUp(size, block);
-			restoreDiagonalKernel<DIM> << <grid, block >> > (size, D.values(), backup.values());
+			restoreDiagonalKernel<DIM> << <grid, block >> > (
+				size, 
+				D.values(), 
+				backup.values()
+				);
 			CUDA_CHECK(cudaGetLastError());
 		}
 
@@ -1126,8 +1356,17 @@ namespace cuba
 			const int grid = divUp(cols, block);
 
 			bp.copyTo(bsc);
-			computeBschureKernel << <grid, block >> > (cols, Hll, invHll, bl, Hpl, Hpl.outerIndices(), Hpl.innerIndices(),
-				bsc, Hpl_invHll);
+			computeBschureKernel << <grid, block >> > (
+				cols, 
+				Hll, 
+				invHll, 
+				bl, 
+				Hpl, 
+				Hpl.outerIndices(), 
+				Hpl.innerIndices(),
+				bsc, 
+				Hpl_invHll
+				);
 			CUDA_CHECK(cudaGetLastError());
 		}
 
@@ -1140,8 +1379,19 @@ namespace cuba
 			const int grid2 = divUp(nmulBlocks, block);
 
 			Hsc.fillZero();
-			initializeHschurKernel << <grid1, block >> > (Hsc.rows(), Hpp, Hsc, Hsc.outerIndices());
-			computeHschureKernel << <grid2, block >> > (nmulBlocks, mulBlockIds, Hpl_invHll, Hpl, Hsc);
+			initializeHschurKernel << <grid1, block >> > (
+				Hsc.rows(),
+				Hpp, 
+				Hsc, 
+				Hsc.outerIndices()
+				);
+			computeHschureKernel << <grid2, block >> > (
+				nmulBlocks, 
+				mulBlockIds, 
+				Hpl_invHll, 
+				Hpl, 
+				Hsc
+				);
 			CUDA_CHECK(cudaGetLastError());
 		}
 
@@ -1150,7 +1400,12 @@ namespace cuba
 			const int size = HscCSR.ssize();
 			const int block = 1024;
 			const int grid = divUp(size, block);
-			convertBSRToCSRKernel << <grid, block >> > (size, HscBSR.values(), HscCSR, BSR2CSR);
+			convertBSRToCSRKernel << <grid, block >> > (
+				size,
+				HscBSR.values(), 
+				HscCSR, 
+				BSR2CSR
+				);
 		}
 
 		void twistCSR(int size, int nnz, const int* srcRowPtr, const int* srcColInd, const int* P,
@@ -1159,10 +1414,23 @@ namespace cuba
 			const int block = 512;
 			const int grid = divUp(size, block);
 
-			permuteNnzPerRowKernel << <grid, block >> > (size, srcRowPtr, P, nnzPerRow);
+			permuteNnzPerRowKernel << <grid, block >> > (
+				size, 
+				srcRowPtr,
+				P, 
+				nnzPerRow
+				);
 			exclusiveScan(nnzPerRow, dstRowPtr, size + 1);
 			CUDA_CHECK(cudaMemcpy(nnzPerRow, dstRowPtr, sizeof(int) * (size + 1), cudaMemcpyDeviceToDevice));
-			permuteColIndKernel << <grid, block >> > (size, srcRowPtr, srcColInd, P, dstColInd, dstMap, nnzPerRow);
+			permuteColIndKernel << <grid, block >> > (
+				size, 
+				srcRowPtr, 
+				srcColInd, 
+				P, 
+				dstColInd, 
+				dstMap, 
+				nnzPerRow
+				);
 		}
 
 		void permute(int size, const Scalar* src, Scalar* dst, const int* P)
@@ -1179,8 +1447,16 @@ namespace cuba
 			const int block = 1024;
 			const int grid = divUp(Hpl.cols(), block);
 
-			schurComplementPostKernel << <grid, block >> > (Hpl.cols(), invHll, bl, Hpl,
-				Hpl.outerIndices(), Hpl.innerIndices(), xp, xl);
+			schurComplementPostKernel << <grid, block >> > (
+				Hpl.cols(), 
+				invHll, 
+				bl, 
+				Hpl,
+				Hpl.outerIndices(), 
+				Hpl.innerIndices(), 
+				xp, 
+				xl
+				);
 			CUDA_CHECK(cudaGetLastError());
 		}
 
@@ -1188,7 +1464,12 @@ namespace cuba
 		{
 			const int block = 256;
 			const int grid = divUp(xp.size(), block);
-			updatePosesKernel << <grid, block >> > (xp.size(), xp, qs, ts);
+			updatePosesKernel << <grid, block >> > (
+				xp.size(), 
+				xp, 
+				qs,
+				ts
+				);
 			CUDA_CHECK(cudaGetLastError());
 		}
 
@@ -1196,7 +1477,11 @@ namespace cuba
 		{
 			const int block = 1024;
 			const int grid = divUp(xl.size(), block);
-			updateLandmarksKernel << <grid, block >> > (xl.size(), xl, Xws);
+			updateLandmarksKernel << <grid, block >> > (
+				xl.size(), 
+				xl, 
+				Xws
+				);
 			CUDA_CHECK(cudaGetLastError());
 		}
 
@@ -1206,7 +1491,13 @@ namespace cuba
 			const int grid = 4;
 
 			CUDA_CHECK(cudaMemset(scale, 0, sizeof(Scalar)));
-			computeScaleKernel << <grid, block >> > (x, b, scale, lambda, x.ssize());
+			computeScaleKernel << <grid, block >> > (
+				x, 
+				b, 
+				scale,
+				lambda, 
+				x.ssize()
+				);
 			CUDA_CHECK(cudaGetLastError());
 		}
 
