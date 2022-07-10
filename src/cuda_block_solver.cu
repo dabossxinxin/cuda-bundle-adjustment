@@ -82,6 +82,7 @@ namespace cuba
 			T* data;
 		};
 
+		// Col Major
 		template <typename T, int ROWS, int COLS>
 		struct ConstMatView
 		{
@@ -752,6 +753,7 @@ namespace cuba
 		////////////////////////////////////////////////////////////////////////////////////
 		// Kernel functions
 		////////////////////////////////////////////////////////////////////////////////////
+		
 		template <int MDIM>
 		__global__ void computeActiveErrorsKernel(int nedges,
 			const Vec4d* qs, const Vec3d* ts, const Vec3d* Xws, const Vecxd<MDIM>* measurements,
