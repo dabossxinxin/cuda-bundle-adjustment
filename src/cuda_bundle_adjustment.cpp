@@ -1,5 +1,6 @@
 ﻿#include "cuda_bundle_adjustment.h"
 
+#include <iostream>
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
@@ -350,9 +351,14 @@ namespace cuba
 
 		double maxDiagonal()
 		{
+			clock_t t_start_max_diagonal = clock();
 			DeviceBuffer<Scalar> d_buffer(16);
 			const Scalar maxP = gpu::maxDiagonal(d_Hpp_, d_buffer);
 			const Scalar maxL = gpu::maxDiagonal(d_Hll_, d_buffer);
+			clock_t t_end_max_diagonal = clock();
+			std::cout << "time max diagonal: "
+				<< t_end_max_diagonal - t_start_max_diagonal
+				<< " ms" << std::endl;
 			return std::max(maxP, maxL);
 		}
 

@@ -753,7 +753,21 @@ namespace cuba
 		////////////////////////////////////////////////////////////////////////////////////
 		// Kernel functions
 		////////////////////////////////////////////////////////////////////////////////////
-		
+
+		/*!
+		* @brief 求解观测值与预测值之间的重投影误差
+		* @detail MDIM表示优化问题中测量值的个数
+		* @param[in]	nedges			优化问题中边的数量
+		* @param[in]	qs				Pose顶点旋转分量
+		* @param[in]	ts				Pose顶点平移分量
+		* @param[in]	Xws				LandMark顶点
+		* @param[in]	measurements	测量值
+		* @param[in]	omegas			测量值权重
+		* @param[in]	edge2PL			二元边的两个顶点ID
+		* @param[in]	errors			每条边的重投影误差
+		* @param[in]	Xcs				LandMark顶点在相机上的投影
+		* @param[in]	chi				当前优化问题总体残差二范数
+		*/
 		template <int MDIM>
 		__global__ void computeActiveErrorsKernel(int nedges,
 			const Vec4d* qs, const Vec3d* ts, const Vec3d* Xws, const Vecxd<MDIM>* measurements,
@@ -798,6 +812,7 @@ namespace cuba
 			cache[sharedIdx] = sumchi;
 			__syncthreads();
 
+			/* 递归计算所有残差的和 */
 			for (int stride = BLOCK_ACTIVE_ERRORS / 2; stride > 0; stride >>= 1)
 			{
 				if (sharedIdx < stride)
@@ -809,6 +824,22 @@ namespace cuba
 				atomicAdd(chi, cache[0]);
 		}
 
+		/*!
+		* @brief 构造海森矩阵
+		* @detail MDIM表示优化问题中测量值的个数
+		* @param[in]	nedges			优化问题中边的数量
+		* @param[in]	qs				Pose顶点旋转分量
+		* @param[in]	errors			观测值残差
+		* @param[in]	omegas			观测值权重
+		* @param[in]	edge2PL			二元边的两个顶点ID
+		* @param[in]	edge2Hpl		Hpl矩阵索引
+		* @param[in]	flags			是否固定Pose或LandMark的标志
+		* @param[in]	Hpp				Pose雅克比构造的海森矩阵
+		* @param[in]	bp				Pose雅克比与残差构造的bp
+		* @param[in]	Hll				LandMark雅克比构造的海森矩阵
+		* @param[in]	bl				LandMark雅克比与残差构造的bl
+		* @param[in]	Hpl				Pose与LandMark雅克比构造的海森矩阵
+		*/
 		template <int MDIM>
 		__global__ void constructQuadraticFormKernel(int nedges,
 			const Vec3d* Xcs, const Vec4d* qs, const Vecxd<MDIM>* errors,
@@ -859,6 +890,13 @@ namespace cuba
 			}
 		}
 
+		/*!
+		* @brief 计算大海森矩阵中最大的对角元素值
+		* @detail 最大对角元素值用于计算初始的迭代控制参数lambda
+		* @param[in]	size	海森矩阵的维度	
+		* @param[in]	D		存储海森矩阵的一维指针
+		* @param[in]	maxD	海森矩阵中最大的对角元素
+		*/
 		template <int DIM>
 		__global__ void maxDiagonalKernel(int size, const Scalar* D, Scalar* maxD)
 		{
@@ -866,6 +904,7 @@ namespace cuba
 			__shared__ Scalar cache[BLOCK_MAX_DIAGONAL];
 
 			Scalar maxVal = 0;
+			/* 通过合并访问降低线程对内存的访问延迟 */
 			for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < size; i += gridDim.x * blockDim.x)
 			{
 				const int j = i / DIM;
@@ -877,6 +916,7 @@ namespace cuba
 			cache[sharedIdx] = maxVal;
 			__syncthreads();
 
+			/* 递归调用最大值函数，实现对数级别的对比效率 */
 			for (int stride = BLOCK_MAX_DIAGONAL / 2; stride > 0; stride >>= 1)
 			{
 				if (sharedIdx < stride)
@@ -888,6 +928,14 @@ namespace cuba
 				maxD[blockIdx.x] = cache[0];
 		}
 
+		/*!
+		* @brief 向海森矩阵对角元素中添加Lambda
+		* @detail LM算法中通过控制lambda控制迭代步长
+		* @param[in]	size	海森矩阵的维度
+		* @param[in]	D		海森矩阵的指针
+		* @param[in]	lambda	LM算法中迭代控制参数
+		* @param[in]	backup	海森矩阵对角元素备份
+		*/
 		template <int DIM>
 		__global__ void addLambdaKernel(int size, Scalar* D, Scalar lambda, Scalar* backup)
 		{
@@ -1182,6 +1230,19 @@ namespace cuba
 			thrust::sort(ptrSrc, ptrSrc + mulBlockIds.size(), LessRowId());
 		}
 
+		/*!
+		* @brief 求解优化问题中的总体残差
+		* @detail M表示优化问题中观测值的数量
+		* @param[in]	qs				Pose顶点旋转分量
+		* @param[in]	ts				Pose顶点平移分量
+		* @param[in]	Xws				LandMark顶点
+		* @param[in]	measurements	测量值
+		* @param[in]	omegas			测量值权重
+		* @param[in]	edge2PL			二元边的顶点ID
+		* @param[in]	errors			各条边的重投影误差
+		* @param[in]	Xcs				LandMark顶点在相机上的投影
+		* @param[in]	chi				优化问题总体残差的二范数
+		*/
 		template <int M>
 		Scalar computeActiveErrors_(const GpuVec4d& qs, const GpuVec3d& ts, const GpuVec3d& Xws,
 			const GpuVecxd<M>& measurements, const GpuVec1d& omegas, const GpuVec2i& edge2PL,
@@ -1296,11 +1357,23 @@ namespace cuba
 			return maxv;
 		}
 
+		/*!
+		* @brief 搜索Pose海森矩阵中的最大元素
+		* @detail 通过内存的合并访问，带有共享内存的递归调用实现
+		* @param[in]	Hpp		Pose海森矩阵
+		* @param[in]	maxD	矩阵中的最大元素
+		*/
 		Scalar maxDiagonal(const GpuPxPBlockVec& Hpp, Scalar* maxD)
 		{
 			return maxDiagonal_(Hpp, maxD);
 		}
 
+		/*!
+		* @brief 搜索LandMark海森矩阵中的最大元素
+		* @detail 通过内存的合并访问，带有共享内存的递归调用实现
+		* @param[in]	Hll		LandMark海森矩阵
+		* @param[in]	maxD	矩阵中的最大元素
+		*/
 		Scalar maxDiagonal(const GpuLxLBlockVec& Hll, Scalar* maxD)
 		{
 			return maxDiagonal_(Hll, maxD);
