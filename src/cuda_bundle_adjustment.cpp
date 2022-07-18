@@ -756,7 +756,6 @@ namespace cuba
 			}
 
 			solver_.finalize();
-
 			solver_.getTimeProfile(timeProfile_);
 		}
 

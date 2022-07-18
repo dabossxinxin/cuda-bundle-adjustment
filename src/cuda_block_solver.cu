@@ -950,6 +950,12 @@ namespace cuba
 			ptrBlock[k * DIM + k] += lambda;
 		}
 
+		/*!
+		* @brief 当前迭代没有使残差下降时，恢复上一步的海森矩阵
+		* @param[in]	size	海森矩阵的维度
+		* @param[in]	D		海森矩阵指针
+		* @param[in]	backup	海森矩阵对角元素备份值
+		*/
 		template <int DIM>
 		__global__ void restoreDiagonalKernel(int size, Scalar* D, const Scalar* backup)
 		{
@@ -1075,6 +1081,13 @@ namespace cuba
 			MatMulVec<3, 3>(invHll.at(colId), cl, xl.at(colId));
 		}
 
+		/*!
+		* @brief 更新Pose的参数值
+		* @param[in]	size	优化问题中Pose顶点的个数
+		* @param[in]	xp		优化问题中Pose增量
+		* @param[in]	qs		优化问题中Pose顶点旋转分量参数值
+		* @param[in]	ts		优化问题中Pose顶点平移分量参数值
+		*/
 		__global__ void updatePosesKernel(int size, Px1BlockPtr xp, Vec4d* qs, Vec3d* ts)
 		{
 			const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1087,6 +1100,12 @@ namespace cuba
 			updatePose(expq, expt, qs[i], ts[i]);
 		}
 
+		/*!
+		* @brief 更新LandMark的参数值
+		* @param[in]	size	优化问题中LandMark的数量
+		* @param[in]	xl		优化问题中LandMark增量
+		* @param[in]	Xws		优化问题中LandMark顶点参数值
+		*/
 		__global__ void updateLandmarksKernel(int size, Lx1BlockPtr xl, Vec3d* Xws)
 		{
 			const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1100,11 +1119,21 @@ namespace cuba
 			Xw[2] += dXw[2];
 		}
 
+		/*!
+		* @brief 计算比例因子rho的分母：0.5*delta_x*(lambda*delta_x+b)
+		* @detail LM算法中通过比例因子确定阻尼因子值，阻尼因子由比例因子确定
+		* @param[in]	x		当前迭代步骤生成的delta_x
+		* @param[in]	b		当前迭代步骤生成的残差-JT*f(x)
+		* @param[out]	scale	当前迭代步骤比例因子rho的分母
+		* @param[in]	lambda	当前迭代步骤的阻尼因子值
+		* @param[in]	size	当前优化问题解的维度
+		*/
 		__global__ void computeScaleKernel(const Scalar* x, const Scalar* b, Scalar* scale, Scalar lambda, int size)
 		{
 			const int sharedIdx = threadIdx.x;
 			__shared__ Scalar cache[BLOCK_COMPUTE_SCALE];
-
+			
+			/* 使用内存合并读取增大线程的吞吐量 */
 			Scalar sum = 0;
 			for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < size; i += gridDim.x * blockDim.x)
 				sum += x[i] * (lambda * x[i] + b[i]);
@@ -1112,6 +1141,7 @@ namespace cuba
 			cache[sharedIdx] = sum;
 			__syncthreads();
 
+			/* 使用归约方法递归计算共享内存中所记录数据的和 */
 			for (int stride = BLOCK_COMPUTE_SCALE / 2; stride > 0; stride >>= 1)
 			{
 				if (sharedIdx < stride)

@@ -23,7 +23,7 @@ int main(int argc, char** argv)
 	std::cout << "Reading Graph... " << std::flush;
 
 	std::string filename =
-		"F:\\Users\\Admin\\Desktop\\git\\cuda-bundle-adjustment\\samples\\ba_input\\ba_kitti_07.json";
+		"D:\\Code\\cuda-bundle-adjustment\\samples\\ba_input\\ba_kitti_07.json";
 	auto optimizer = readGraph(filename.c_str());
 
 	std::cout << "Done." << std::endl << std::endl;
