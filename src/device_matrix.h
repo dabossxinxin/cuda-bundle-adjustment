@@ -71,6 +71,9 @@ public:
 			innerIndices_.download(innerIndices);
 	}
 
+	/*!
+	* @brief 将显存中所有数据都赋值为零
+	*/
 	void fillZero()
 	{
 		values_.fillZero();

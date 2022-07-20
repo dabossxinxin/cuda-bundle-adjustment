@@ -16,11 +16,19 @@
 
 namespace cuba
 {
+	/*!
+	* @brief 判断模板参数是否与输入参数是否一致
+	*/
 	template <typename T>
 	static constexpr bool is_value_type_32f() { return std::is_same_v<T, float>; }
 	template <typename T>
 	static constexpr bool is_value_type_64f() { return std::is_same_v<T, double>; }
 
+	/*!
+	* @brief 用于控制cusparse handle
+	* @detail 编译器自动生成默认构造、默认析构、拷贝构造以及赋值构造
+	*		  四个构造函数，该结构中使用"=delete"禁用两个构造函数 
+	*/
 	struct CusparseHandle
 	{
 		CusparseHandle() { init(); }
@@ -33,6 +41,11 @@ namespace cuba
 		cusparseHandle_t handle;
 	};
 
+	/*!
+	* @brief 用于控制cusolver handle
+	* @detail 编译器自动生成默认构造、默认析构、拷贝构造以及赋值构造
+	*		  四个构造函数，该结构中使用"=delete"禁用两个构造函数 
+	*/
 	struct CusolverHandle
 	{
 		CusolverHandle() { init(); }
@@ -45,6 +58,11 @@ namespace cuba
 		cusolverSpHandle_t handle;
 	};
 
+	/*!
+	* @brief 用于控制稀疏矩阵的描述文件
+	* @detail 编译器自动生成默认构造、默认析构、拷贝构造以及赋值构造
+	*		  四个构造函数，该结构中使用"=delete"禁用两个构造函数
+	*/
 	struct CusparseMatDescriptor
 	{
 		CusparseMatDescriptor() { init(); }
@@ -65,19 +83,34 @@ namespace cuba
 		cusparseMatDescr_t desc;
 	};
 
+	/*!
+	* @brief 使用CSR(Compressed Sparse Row Format)格式表示稀疏方阵
+	* @detail 类中使用nnz_表示非零元素个数，size_表示矩阵行数（维度）
+	*/
 	template <typename T>
 	class SparseSquareMatrixCSR
 	{
 	public:
 
+		/*!
+		* @brief 默认构造函数
+		*/
 		SparseSquareMatrixCSR() : size_(0), nnz_(0) {}
 
+		/*!
+		* @brief 重置矩阵维度/行
+		* @param[in]	size	矩阵维度/行
+		*/
 		void resize(int size)
 		{
 			size_ = size;
 			rowPtr_.resize(size + 1);
 		}
 
+		/*!
+		* @brief 重置矩阵非零元素数量
+		* @param[in]	nnz	矩阵非零元素数量
+		*/
 		void resizeNonZeros(int nnz)
 		{
 			nnz_ = nnz;
@@ -85,6 +118,12 @@ namespace cuba
 			colInd_.resize(nnz);
 		}
 
+		/*!
+		* @brief 将本地数据传入设备指针中
+		* @param[in]	values	本地非零元素指针
+		* @param[in]	rowPtr	本地每行非零元素个数指针
+		* @param[in]	colInd	本地非零元素列索引指针
+		*/
 		void upload(const T* values = nullptr, const int* rowPtr = nullptr, const int* colInd = nullptr)
 		{
 			if (values)
@@ -95,6 +134,12 @@ namespace cuba
 				colInd_.upload(colInd);
 		}
 
+		/*!
+		* @brief 将设备中的数据传入本地内存中
+		* @param[out]	values	本地非零元素指针
+		* @param[out]	rowPtr	本地每行非零元素个数指针
+		* @param[out]	colInd	本地非零元素列索引指针	
+		*/
 		void download(T* values = nullptr, int* rowPtr = nullptr, int* colInd = nullptr) const
 		{
 			if (values)
@@ -136,7 +181,7 @@ namespace cuba
 		{
 			handle_ = handle;
 
-			// create info
+			// create and initializes the opaque structure of Cholesky to default values
 			cusolverSpCreateCsrcholInfo(&info_);
 		}
 
@@ -145,12 +190,32 @@ namespace cuba
 			size_t internalData, workSpace;
 
 			if (is_value_type_32f<T>())
-				cusolverSpScsrcholBufferInfo(handle_, A.size(), A.nnz(), A.desc(),
-				(float*)A.val(), A.rowPtr(), A.colInd(), info_, &internalData, &workSpace);
+				cusolverSpScsrcholBufferInfo(
+					handle_,			// [in]handle to the cuSolverSP library context
+					A.size(),			// [in]number of rows and columns of matrix A
+					A.nnz(),			// [in]number of nonzeros of matrix A
+					A.desc(),			// [in]the descriptor of matrix A
+					(float*)A.val(),	// [in]<type>array of nnzA nonzero elements of matrix A
+					A.rowPtr(),			// [in]integer array of n+1 elements
+					A.colInd(),			// [in]integer array of nnzAcolumn indices of the nonzero elements
+					info_,				// [in/out]recording internal parameters for buffer
+					&internalData,		// [out]number of bytes of the internal data
+					&workSpace			// [out]number of bytes of the buffer in numerical factorization
+				);
 
 			if (is_value_type_64f<T>())
-				cusolverSpDcsrcholBufferInfo(handle_, A.size(), A.nnz(), A.desc(),
-				(double*)A.val(), A.rowPtr(), A.colInd(), info_, &internalData, &workSpace);
+				cusolverSpDcsrcholBufferInfo(
+					handle_, 
+					A.size(), 
+					A.nnz(),
+					A.desc(),
+					(double*)A.val(), 
+					A.rowPtr(), 
+					A.colInd(), 
+					info_, 
+					&internalData,
+					&workSpace
+				);
 
 			buffer_.resize(workSpace);
 		}
@@ -161,10 +226,22 @@ namespace cuba
 			int singularity = -1;
 
 			if (is_value_type_32f<T>())
-				cusolverSpScsrcholZeroPivot(handle_, info_, tol, &singularity);
+				cusolverSpScsrcholZeroPivot(
+					handle_,			// [in]handle to the cuSolverSP library context.
+					info_,				// [in]opaque structure for Cholesky factorization.
+					tol,				// [in]tolerance to determine singularity.
+					&singularity		// [out]-1 if A is non-singular; otherwise, 
+										// smallest k that A(0:k,0:k) is not positive definite 
+										// under given tolerance.
+				);
 
 			if (is_value_type_64f<T>())
-				cusolverSpDcsrcholZeroPivot(handle_, info_, tol, &singularity);
+				cusolverSpDcsrcholZeroPivot(
+					handle_, 
+					info_, 
+					tol, 
+					&singularity
+				);
 
 			if (position)
 				*position = singularity;
@@ -173,7 +250,15 @@ namespace cuba
 
 		bool analyze(const SparseSquareMatrixCSR<T>& A)
 		{
-			cusolverSpXcsrcholAnalysis(handle_, A.size(), A.nnz(), A.desc(), A.rowPtr(), A.colInd(), info_);
+			cusolverSpXcsrcholAnalysis(
+				handle_,		// [in]handle to the cuSolverSp library context
+				A.size(),		// [in]number of rows and columns of matrix A
+				A.nnz(),		// [in]number of nonzeros of matrix A
+				A.desc(),		// [in]the descriptor of matrix A
+				A.rowPtr(),		// [in]integer array of n+1 elements
+				A.colInd(),		// [in]integer array of nnzA column indices of the nonzero elements
+				info_			// [out]recording scheduling information used in numerical factorization
+			);
 			allocateBuffer(A);
 			return true;
 		}
@@ -181,12 +266,31 @@ namespace cuba
 		bool factorize(SparseSquareMatrixCSR<T>& A)
 		{
 			if (is_value_type_32f<T>())
-				cusolverSpScsrcholFactor(handle_, A.size(), A.nnz(), A.desc(),
-				(float*)A.val(), A.rowPtr(), A.colInd(), info_, buffer_.data());
+				cusolverSpScsrcholFactor(
+					handle_,			// [in]handle to the cuSolverSP library context.
+					A.size(),			// [in]number of rows and columns of matrix A.
+					A.nnz(),			// [in]number of nonzeros of matrix A.
+					A.desc(),			// [in]the descriptor of matrix A.
+					(float*)A.val(),	// [in]<type> array of nnzA nonzero elements of matrix A.
+					A.rowPtr(),			// [in]integer array of n+1 elements
+					A.colInd(),			// [in]integer array of nnzAcolumn indices of the nonzero elements.
+					info_,				// [in/out]opaque structure for Cholesky factorization.
+					buffer_.data()		// [in]buffer allocated by the user, the size is returned by 
+										// cusolverSpXcsrcholBufferInfo().
+				);
 
 			if (is_value_type_64f<T>())
-				cusolverSpDcsrcholFactor(handle_, A.size(), A.nnz(), A.desc(),
-				(double*)A.val(), A.rowPtr(), A.colInd(), info_, buffer_.data());
+				cusolverSpDcsrcholFactor(
+					handle_, 
+					A.size(), 
+					A.nnz(), 
+					A.desc(),
+					(double*)A.val(), 
+					A.rowPtr(), 
+					A.colInd(), 
+					info_, 
+					buffer_.data()
+				);
 
 			return !hasZeroPivot();
 		}
@@ -194,13 +298,30 @@ namespace cuba
 		void solve(int size, const T* b, T* x)
 		{
 			if (is_value_type_32f<T>())
-				cusolverSpScsrcholSolve(handle_, size, (float*)(b), (float*)(x), info_, buffer_.data());
+				cusolverSpScsrcholSolve(
+					handle_,			// [in]handle to cuSolverSP library context
+					size,				// [in]number of rows and columns of matrix A
+					(float*)(b),		// [in]<type> array of n of right-hand-side vectors b
+					(float*)(x),		// [out]<type> array of n of solution vectors x
+					info_,				// [in]opaque structure for Cholesky factorization
+					buffer_.data()		// [in]buffer allocated by the user, the size is return 
+										// by cusolverSpXcsrcholBufferInfo()
+				);
+			
 			if (is_value_type_64f<T>())
-				cusolverSpDcsrcholSolve(handle_, size, (double*)(b), (double*)x, info_, buffer_.data());
+				cusolverSpDcsrcholSolve(
+					handle_, 
+					size, 
+					(double*)(b), 
+					(double*)x, 
+					info_, 
+					buffer_.data()
+				);
 		}
 
 		void destroy()
 		{
+			// release any memory required by the opaque structure of Cholesky
 			cusolverSpDestroyCsrcholInfo(info_);
 		}
 
@@ -288,7 +409,7 @@ namespace cuba
 			}
 			else
 			{
-				cudaMemcpy(Acsr.val(), d_A, sizeof(Scalar) * Acsr.nnz(), cudaMemcpyDeviceToDevice);
+				cudaMemcpy(Acsr.val(), d_A, sizeof(T) * Acsr.nnz(), cudaMemcpyDeviceToDevice);
 			}
 
 			// M = L * LT
