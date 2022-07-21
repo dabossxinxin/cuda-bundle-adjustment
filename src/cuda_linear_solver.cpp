@@ -392,6 +392,22 @@ namespace cuba
 
 				gpu::twistCSR(size, nnz, d_tmpRowPtr, d_tmpColInd, d_PT,
 					Acsr.rowPtr(), Acsr.colInd(), d_map, d_nnzPerRow);
+
+				// 测试对稀疏对称正定矩阵重新排序后的矩阵内存占用及乔列斯基分解效率
+				int* rowPtrCpuBefore = new int[size + 1];
+				int* colIndCpuBefore = new int[nnz];
+				int* rowPtrCpuAfter = new int[size + 1];
+				int* colIndCpuAfter = new int[nnz];
+
+				d_tmpRowPtr.download(rowPtrCpuBefore);
+				d_tmpColInd.download(colIndCpuBefore);
+				Acsr.download(nullptr, rowPtrCpuAfter, nullptr);
+				Acsr.download(nullptr, nullptr, colIndCpuAfter);
+
+				std::string fileNameBefore = "./sparse_matrix_before.bmp";
+				std::string fileNameAfter = "./sparse_matrix_after.bmp";
+				SparseMatrixRepresentation(size, nnz, rowPtrCpuBefore, colIndCpuBefore, fileNameBefore);
+				SparseMatrixRepresentation(size, nnz, rowPtrCpuAfter, colIndCpuAfter, fileNameAfter);
 			}
 			else
 			{
@@ -447,7 +463,16 @@ namespace cuba
 			//cusolverSpXcsrsymrcmHost(cusolver, size, nnz, Acsr.desc(), csrRowPtr, csrColInd, P);
 			//cusolverSpXcsrsymamdHost(cusolver, size, nnz, Acsr.desc(), csrRowPtr, csrColInd, P);
 			//cusolverSpXcsrsymmdqHost(cusolver, size, nnz, Acsr.desc(), csrRowPtr, csrColInd, P);
-			cusolverSpXcsrmetisndHost(cusolver, size, nnz, Acsr.desc(), csrRowPtr, csrColInd, nullptr, P);
+			cusolverSpXcsrmetisndHost(
+				cusolver,		// [in]handle to cuSolverSP library context
+				size,			// [in]number of rows and columns of matrix A
+				nnz,			// [in]number of nonzeros of matrix A
+				Acsr.desc(),	// [in]the descriptor of matrix A
+				csrRowPtr,		// [in]integer array of n+1 elements
+				csrColInd,		// [in]integer array of nnzA column indices of nonzero elements of matrix A
+				nullptr,		// [in]integer array to configure metis
+				P				// [out]permutation vector of size n
+			);
 		}
 
 		Info info() const
@@ -497,6 +522,9 @@ namespace cuba
 			P_.resize(size);
 			cholesky_.reordering(size, nnz, Hsc.rowPtr(), Hsc.colInd(), P_.data());
 			cholesky_.setPermutaion(size, P_.data());
+
+			// print information of Hsc
+			
 
 			// analyze
 			cholesky_.analyze(nnz, Hsc.rowPtr(), Hsc.colInd());
