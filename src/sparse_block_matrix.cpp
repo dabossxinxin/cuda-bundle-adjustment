@@ -37,6 +37,7 @@ namespace cuba
 
 	/*!
 	* @brief 通过Landmark顶点构造海森矩阵的BSR格式
+	* @param[in]	verticesL	优化问题中LandMark顶点
 	*/
 	void HschurSparseBlockMatrix::constructFromVertices(const std::vector<VertexL*>& verticesL)
 	{
@@ -58,6 +59,7 @@ namespace cuba
 				continue;
 
 			indices.clear();
+			// 获取当前LandMark关联的Pose Id
 			for (const auto e : vL->edges)
 			{
 				const auto vP = e->poseVertex();
@@ -65,6 +67,7 @@ namespace cuba
 					indices.push_back(vP->iP);
 			}
 
+			// 计算结构体blockpos的数据
 			std::sort(std::begin(indices), std::end(indices));
 			const int nindices = static_cast<int>(indices.size());
 			for (int i = 0; i < nindices; i++)

@@ -72,7 +72,10 @@ public:
 
 /*!
 * @brief 构造舒尔补形式的海森矩阵：海森矩阵中消去LandMark元素
-* 
+* @param	rowPtr_		n+1维度的行向量，表示每行的非零项个数
+* @param	colPtr_		nnz维度的行向量，表示非零项的列索引
+* @param	nnzPerRow_	稀疏矩阵中每行非零元素的个数
+* @param	BSR2CSR_
 */
 class HschurSparseBlockMatrix : public SparseBlockMatrix<PDIM, PDIM, ROW_MAJOR>
 {
