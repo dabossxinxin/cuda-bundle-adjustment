@@ -4,10 +4,13 @@
 #include <iostream>
 #include <string>
 #include <cstdio>
+#include <chrono>
 
 #include <opencv2/core.hpp>
 #include <opencv2/opencv.hpp>
+#include <cuda_runtime.h>
 
+#define DEBUG
 #define CUDA_CHECK(err) \
 do {\
 	if (err != cudaSuccess) { \
@@ -32,6 +35,19 @@ inline void SparseMatrixRepresentation(
 		}
 	}
 	cv::imwrite(filename.c_str(), sparse_matrix);
+}
+
+using time_point = decltype(std::chrono::steady_clock::now());
+
+inline time_point get_time_point()
+{
+	CUDA_CHECK(cudaDeviceSynchronize());
+	return std::chrono::steady_clock::now();
+}
+
+inline double get_duration(const time_point& from, const time_point& to)
+{
+	return std::chrono::duration_cast<std::chrono::duration<double>>(to - from).count();
 }
 
 #endif // !__MACRO_H__

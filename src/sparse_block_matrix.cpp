@@ -35,6 +35,9 @@ namespace cuba
 			browInd[nnzPerCol[pos.col]++] = pos.row;
 	}
 
+	/*!
+	* @brief 通过Landmark顶点构造海森矩阵的BSR格式
+	*/
 	void HschurSparseBlockMatrix::constructFromVertices(const std::vector<VertexL*>& verticesL)
 	{
 		struct BlockPos { int row, col; };

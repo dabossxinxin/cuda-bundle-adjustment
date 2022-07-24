@@ -10,6 +10,16 @@
 namespace cuba
 {
 
+/*!
+* @brief 类似于稀疏矩阵的BSR表示形式
+* @param	brows_			矩阵块行数量
+* @param	bCols_			矩阵块列数量
+* @param	nblocks_		非零矩阵块数量
+* @param	outerSize_		outerIndices_维度
+* @param	innerSize_		innerIndices_维度
+* @param	outerIndices_	类似于CSR中的rowPtr
+* @param	innerIndices_	类似于CSR中的colInd
+*/
 template <int _BLOCK_ROWS, int _BLOCK_COLS, int ORDER>
 class SparseBlockMatrix
 {
@@ -60,6 +70,10 @@ public:
 	void constructFromBlockPos(std::vector<HplBlockPos>& blockpos);
 };
 
+/*!
+* @brief 构造舒尔补形式的海森矩阵：海森矩阵中消去LandMark元素
+* 
+*/
 class HschurSparseBlockMatrix : public SparseBlockMatrix<PDIM, PDIM, ROW_MAJOR>
 {
 public:

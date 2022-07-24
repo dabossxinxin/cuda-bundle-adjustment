@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <chrono>
 
+#include "macro.h"
 #include "constants.h"
 #include "sparse_block_matrix.h"
 #include "device_buffer.h"
@@ -19,18 +20,6 @@ namespace cuba
 	using VertexMapL = std::map<int, VertexL*>;
 	using EdgeSet2D = std::unordered_set<Edge2D*>;
 	using EdgeSet3D = std::unordered_set<Edge3D*>;
-	using time_point = decltype(std::chrono::steady_clock::now());
-
-	static inline time_point get_time_point()
-	{
-		gpu::waitForKernelCompletion();
-		return std::chrono::steady_clock::now();
-	}
-
-	static inline double get_duration(const time_point& from, const time_point& to)
-	{
-		return std::chrono::duration_cast<std::chrono::duration<double>>(to - from).count();
-	}
 
 	template <typename T>
 	static constexpr Scalar ScalarCast(T v) { return static_cast<Scalar>(v); }
@@ -398,7 +387,7 @@ namespace cuba
 				return false;
 
 			const auto t2 = get_time_point();
-
+			
 			////////////////////////////////////////////////////////////////////////////////////
 			// Solve linear equation about Δxl
 			// Hll*Δxl = -bl - HplT*Δxp

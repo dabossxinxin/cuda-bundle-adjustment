@@ -8,7 +8,6 @@
 
 namespace cuba
 {
-
 	class SparseLinearSolver
 	{
 	public:

@@ -11,6 +11,7 @@
 #include <Eigen/Core>
 #include <Eigen/Sparse>
 
+#include "macro.h"
 #include "device_buffer.h"
 #include "cuda_block_solver.h"
 
@@ -393,6 +394,7 @@ namespace cuba
 				gpu::twistCSR(size, nnz, d_tmpRowPtr, d_tmpColInd, d_PT,
 					Acsr.rowPtr(), Acsr.colInd(), d_map, d_nnzPerRow);
 
+#ifdef DEBUG
 				// 测试对稀疏对称正定矩阵重新排序后的矩阵内存占用及乔列斯基分解效率
 				int* rowPtrCpuBefore = new int[size + 1];
 				int* colIndCpuBefore = new int[nnz];
@@ -404,10 +406,11 @@ namespace cuba
 				Acsr.download(nullptr, rowPtrCpuAfter, nullptr);
 				Acsr.download(nullptr, nullptr, colIndCpuAfter);
 
-				std::string fileNameBefore = "./sparse_matrix_before.bmp";
-				std::string fileNameAfter = "./sparse_matrix_after.bmp";
+				std::string fileNameBefore = "./sparse_matrix.bmp";
+				std::string fileNameAfter = "./sparse_matrix_symmdq.bmp";
 				SparseMatrixRepresentation(size, nnz, rowPtrCpuBefore, colIndCpuBefore, fileNameBefore);
 				SparseMatrixRepresentation(size, nnz, rowPtrCpuAfter, colIndCpuAfter, fileNameAfter);
+#endif
 			}
 			else
 			{
@@ -428,13 +431,20 @@ namespace cuba
 				cudaMemcpy(Acsr.val(), d_A, sizeof(T) * Acsr.nnz(), cudaMemcpyDeviceToDevice);
 			}
 
+			const auto t1 = get_time_point();
+
 			// M = L * LT
 			if (!cholesky.factorize(Acsr))
 				information = Info::NUMERICAL_ISSUE;
+
+			const auto t2 = get_time_point();
+			cholesky_time = get_duration(t1, t2);
 		}
 
 		void solve(const T* d_b, T* d_x)
 		{
+			const auto t1 = get_time_point();
+
 			if (doOrdering)
 			{
 				// y = P * b
@@ -451,6 +461,9 @@ namespace cuba
 				// solve A * x = b
 				cholesky.solve(Acsr.size(), d_b, d_x);
 			}
+
+			const auto t2 = get_time_point();
+			linear_solver_time = get_duration(t1, t2);
 		}
 
 		void permute(int size, const T* src, T* dst, const int* P)
@@ -458,11 +471,37 @@ namespace cuba
 			gpu::permute(size, src, dst, P);
 		}
 
-		void reordering(int size, int nnz, const int* csrRowPtr, const int* csrColInd, int* P) const
+		void reordering(int size, int nnz, const int* csrRowPtr, const int* csrColInd, int* P)
 		{
-			//cusolverSpXcsrsymrcmHost(cusolver, size, nnz, Acsr.desc(), csrRowPtr, csrColInd, P);
-			//cusolverSpXcsrsymamdHost(cusolver, size, nnz, Acsr.desc(), csrRowPtr, csrColInd, P);
-			//cusolverSpXcsrsymmdqHost(cusolver, size, nnz, Acsr.desc(), csrRowPtr, csrColInd, P);
+			const auto t1 = get_time_point();
+			/*cusolverSpXcsrsymrcmHost(
+				cusolver, 
+				size, 
+				nnz, 
+				Acsr.desc(), 
+				csrRowPtr, 
+				csrColInd, 
+				P
+			);*/
+			/*cusolverSpXcsrsymamdHost(
+				cusolver, 
+				size, 
+				nnz, 
+				Acsr.desc(), 
+				csrRowPtr, 
+				csrColInd, 
+				P
+			);*/
+			/*cusolverSpXcsrsymmdqHost(
+				cusolver, 
+				size, 
+				nnz, 
+				Acsr.desc(),
+				csrRowPtr,
+				csrColInd, 
+				P
+			);*/
+			// 实验证明，这种重排序的方式会带来更快的cholesky分解效率
 			cusolverSpXcsrmetisndHost(
 				cusolver,		// [in]handle to cuSolverSP library context
 				size,			// [in]number of rows and columns of matrix A
@@ -473,6 +512,8 @@ namespace cuba
 				nullptr,		// [in]integer array to configure metis
 				P				// [out]permutation vector of size n
 			);
+			const auto t2 = get_time_point();
+			reordering_time = get_duration(t1, t2);
 		}
 
 		Info info() const
@@ -501,6 +542,12 @@ namespace cuba
 
 		Info information;
 		bool doOrdering;
+		
+	public:
+
+		double reordering_time;
+		double cholesky_time;
+		double linear_solver_time;
 	};
 
 	class SparseLinearSolverImpl : public SparseLinearSolver
@@ -542,9 +589,19 @@ namespace cuba
 
 			cholesky_.solve(d_b, d_x);
 
+			print_cholesky_info();
+
 			return true;
 		}
 
+		void print_cholesky_info()
+		{
+			std::cout << std::endl << std::endl;
+			std::cout << "reordering time: " << cholesky_.reordering_time << std::endl;
+			std::cout << "cholesky factorize time: " << cholesky_.cholesky_time << std::endl;
+			std::cout << "linear solve time: " << cholesky_.linear_solver_time << std::endl;
+			std::cout << std::endl;
+		}
 	private:
 
 		std::vector<int> P_;
