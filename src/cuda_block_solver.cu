@@ -755,6 +755,7 @@ namespace cuba
 		////////////////////////////////////////////////////////////////////////////////////
 
 		/*!
+<<<<<<< Updated upstream
 		* @brief 求解观测值与预测值之间的重投影误差
 		* @detail MDIM表示优化问题中测量值的个数
 		* @param[in]	nedges			优化问题中边的数量
@@ -767,6 +768,19 @@ namespace cuba
 		* @param[in]	errors			每条边的重投影误差
 		* @param[in]	Xcs				LandMark顶点在相机上的投影
 		* @param[in]	chi				当前优化问题总体残差二范数
+=======
+		* @brief 计算优化问题中的残差
+		* @param[in]	nedges			优化问题中边的数量
+		* @param[in]	qs				所有顶点的姿态
+		* @param[in]	ts				所有顶点的位置
+		* @param[in]	Xws				所有路标点的位置
+		* @param[in]	measurements	所有边的测量值
+		* @param[in]	omegas			边的权重
+		* @param[in]	edge2PL			每条边的顶点ID
+		* @param[in]	errors			每条边的残差
+		* @param[in]	Xcs				所有路标点相机系下的位置
+		* @param[in]	chi				errorT*omega*error
+>>>>>>> Stashed changes
 		*/
 		template <int MDIM>
 		__global__ void computeActiveErrorsKernel(int nedges,
