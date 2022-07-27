@@ -589,7 +589,7 @@ namespace cuba
 
 			cholesky_.solve(d_b, d_x);
 
-			print_cholesky_info();
+			//print_cholesky_info();
 
 			return true;
 		}

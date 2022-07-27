@@ -1176,6 +1176,12 @@ namespace cuba
 			dst[dstk] = src[map[dstk]];
 		}
 
+		/*!
+		* @brief 计算CSC格式稀疏矩阵每列的非零块数量
+		* @param[in]	blockpos	非零块位置索引
+		* @param[in]	nblocks		非零块的个数
+		* @param[out]	nnzPerCol	矩阵中每列的非零块
+		*/
 		__global__ void nnzPerColKernel(const Vec3i* blockpos, int nblocks, int* nnzPerCol)
 		{
 			const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1186,6 +1192,13 @@ namespace cuba
 			atomicAdd(&nnzPerCol[colId], 1);
 		}
 
+		/*!
+		* @brief 设置CSC格式稀疏矩阵的rowInd向量
+		* @param[in]	blockpos	非零块的位置索引
+		* @param[in]	nblocks		非零块的数量
+		* @param[out]	rowInd		非零块的行索引
+		* @param[out]	indexPL		边与非零块索引对应关系
+		*/
 		__global__ void setRowIndKernel(const Vec3i* blockpos, int nblocks, int* rowInd, int* indexPL)
 		{
 			const int k = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1224,6 +1237,13 @@ namespace cuba
 			CUDA_CHECK(cudaMemcpyToSymbol(c_camera, camera, sizeof(Scalar) * 5));
 		}
 
+		/*!
+		* @brief 求解向量的前缀和（不包含自身）
+		* @detail 使用thrust库集成的方法直接求解
+		* @param[in]	src		原始向量数据
+		* @param[out]	dst		前缀和向量
+		* @param[in]	size	向量维度
+		*/
 		void exclusiveScan(const int* src, int* dst, int size)
 		{
 			auto ptrSrc = thrust::device_pointer_cast(src);
@@ -1231,6 +1251,14 @@ namespace cuba
 			thrust::exclusive_scan(ptrSrc, ptrSrc + size, ptrDst);
 		}
 
+		/*!
+		* @brief 构造大海森矩阵的Hpl部分结构：即该矩阵的非零块的位置索引
+		* @detail 通过输入的blockPos计算稀疏矩阵Hpl的colPtr、rowInd以及边与非零块索引的关系indexPL
+		* @param[in]		blockpos	非零块位置索引：行/列/边ID
+		* @param[in/out]	Hpl			稀疏矩阵的CSC格式（BSC）
+		* @param[out]		indexPL		边与非零块的索引关系
+		* @param[out]		nnzPerCol	稀疏矩阵每列的非零块数量
+		*/
 		void buildHplStructure(GpuVec3i& blockpos, GpuHplBlockMat& Hpl, GpuVec1i& indexPL, GpuVec1i& nnzPerCol)
 		{
 			const int nblocks = Hpl.nnz();
@@ -1239,22 +1267,31 @@ namespace cuba
 			int* colPtr = Hpl.outerIndices();
 			int* rowInd = Hpl.innerIndices();
 
+			// 相同列按照行ID升序排序，不同列按照列ID升序排序
 			auto ptrBlockPos = thrust::device_pointer_cast(blockpos.data());
 			thrust::sort(ptrBlockPos, ptrBlockPos + nblocks, LessColId());
 			CUDA_CHECK(cudaMemset(nnzPerCol, 0, sizeof(int) * (Hpl.cols() + 1)));
 
+			// 使用非零块的位置索引获取稀疏矩阵Hpl每列的非零元素
 			nnzPerColKernel << <grid, block >> > (
 				blockpos, 
 				nblocks, 
 				nnzPerCol
 				);
+			CUDA_CHECK(cudaDeviceSynchronize());
+
+			// 通过求解不包含自身的前缀和求解Hpl矩阵的colPtr向量
 			exclusiveScan(nnzPerCol, colPtr, Hpl.cols() + 1);
+
+			// 使用非零块的位置索引以及indexPL计算稀疏矩阵Hpl的rowInd向量
 			setRowIndKernel << <grid, block >> > (
 				blockpos, 
 				nblocks, 
 				rowInd, 
 				indexPL
 				);
+			CUDA_CHECK(cudaDeviceSynchronize());
+			CUDA_CHECK(cudaGetLastError());
 		}
 
 		void findHschureMulBlockIndices(const GpuHplBlockMat& Hpl, const GpuHscBlockMat& Hsc,
@@ -1268,6 +1305,7 @@ namespace cuba
 
 			findHschureMulBlockIndicesKernel << <grid, block >> > (Hpl.cols(), Hpl.outerIndices(), Hpl.innerIndices(),
 				Hsc.outerIndices(), Hsc.innerIndices(), mulBlockIds, nindices);
+			CUDA_CHECK(cudaDeviceSynchronize());
 			CUDA_CHECK(cudaGetLastError());
 
 			auto ptrSrc = thrust::device_pointer_cast(mulBlockIds.data());
