@@ -98,12 +98,13 @@ namespace cuba
 			return lhs.col < rhs.col;
 		});
 
-		// set rowPtr
+		// set nnzPerRow
 		nnzPerRow_.resize(brows_);
 		nnzPerRow_.setZero();
 		for (int i = 0; i < nblocks_; i++)
 			nnzPerRow_[blockpos[i].row]++;
 
+		// set rowPtr
 		browPtr_.resize(brows_ + 1);
 		browPtr_[0] = 0;
 		for (int r = 0; r < brows_; r++)
