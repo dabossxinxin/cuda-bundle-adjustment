@@ -53,6 +53,7 @@ namespace cuba
 		////////////////////////////////////////////////////////////////////////////////////
 		struct LessRowId
 		{
+			// 按行排序：若行ID相同，按照列ID升序排列；若行ID不同，按照行ID升序排列
 			__device__ bool operator()(const Vec3i& lhs, const Vec3i& rhs) const
 			{
 				if (lhs[0] == rhs[0])
@@ -63,6 +64,7 @@ namespace cuba
 
 		struct LessColId
 		{
+			// 按列排序：若列ID相同，按照行ID升序排列；若列ID不同，按照列ID升序排列
 			__device__ bool operator()(const Vec3i& lhs, const Vec3i& rhs) const
 			{
 				if (lhs[1] == rhs[1])
@@ -1015,6 +1017,16 @@ namespace cuba
 			MatMulMatT<6, 3, 6, DEACCUM_ATOMIC>(A, B, Hschur.at(index[2]));
 		}
 
+		/*!
+		* @brief 计算稀疏矩阵Hsc非零块的位置索引
+		* @param[in]	cols			稀疏矩阵Hpl的列数
+		* @param[in]	HplColPtr		稀疏矩阵Hpl的colPtr
+		* @param[in]	HplRowInd		稀疏矩阵Hpl的rowInd
+		* @param[in]	HscRowPtr		稀疏矩阵Hsc的rowPtr
+		* @param[in]	HscColInd		稀疏矩阵Hsc的colInd
+		* @param[out]	mulBlockIds		稀疏矩阵Hsc的非零块位置索引 TODO
+		* @param[out]	nindices		稀疏矩阵Hsc的非零块数量	TODO
+		*/
 		__global__ void findHschureMulBlockIndicesKernel(int cols, const int* HplColPtr, const int* HplRowInd,
 			const int* HscRowPtr, const int* HscColInd, Vec3i* mulBlockIds, int* nindices)
 		{
@@ -1280,6 +1292,12 @@ namespace cuba
 			CUDA_CHECK(cudaGetLastError());
 		}
 
+		/*!
+		* @brief 根据Hpl矩阵确定Hsc矩阵的非零块位置索引
+		* @param[in]	Hpl			Hpl稀疏矩阵格式(BSC)
+		* @param[in]	Hsc			Hsc稀疏矩阵格式(BSR)
+		* @param[out]	mulBlockIds	Hsc稀疏矩阵非零块位置索引
+		*/
 		void findHschureMulBlockIndices(const GpuHplBlockMat& Hpl, const GpuHscBlockMat& Hsc,
 			GpuVec3i& mulBlockIds)
 		{
@@ -1289,8 +1307,15 @@ namespace cuba
 			DeviceBuffer<int> nindices(1);
 			nindices.fillZero();
 
-			findHschureMulBlockIndicesKernel << <grid, block >> > (Hpl.cols(), Hpl.outerIndices(), Hpl.innerIndices(),
-				Hsc.outerIndices(), Hsc.innerIndices(), mulBlockIds, nindices);
+			findHschureMulBlockIndicesKernel << <grid, block >> > (
+				Hpl.cols(), 
+				Hpl.outerIndices(),
+				Hpl.innerIndices(),
+				Hsc.outerIndices(), 
+				Hsc.innerIndices(), 
+				mulBlockIds, 
+				nindices
+				);
 			CUDA_CHECK(cudaDeviceSynchronize());
 			CUDA_CHECK(cudaGetLastError());
 
