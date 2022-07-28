@@ -445,6 +445,7 @@ namespace cuba
 		{
 			const auto t1 = get_time_point();
 
+			// P*A*PT*P*x=P*b => L*LT*P*x=P*b
 			if (doOrdering)
 			{
 				// y = P * b
@@ -466,11 +467,27 @@ namespace cuba
 			linear_solver_time = get_duration(t1, t2);
 		}
 
+		/*!
+		* @brief 使用计算得到的稀疏矩阵置换矩阵P对向量进行行变换
+		* @param[in]	size	稀疏矩阵(方阵)的维度
+		* @param[in]	src		残差向量指针(Ax=b)
+		* @param[out]	dst		行变换后的残差向量
+		* @param[in]	P		置换矩阵P的指针
+		*/
 		void permute(int size, const T* src, T* dst, const int* P)
 		{
 			gpu::permute(size, src, dst, P);
 		}
 
+		/*!
+		* @brief 根据指定的原则对稀疏矩阵元素重新排序
+		* @detail 获取的重排map => dst[i]=src[map[i]]
+		* @param[in]	size		矩阵维度
+		* @param[in]	nnz			矩阵非零元素数量
+		* @param[in]	csrRowPtr	rowPtr
+		* @param[in]	csrColInd	colInd
+		* @param[out]	P			矩阵重排map
+		*/
 		void reordering(int size, int nnz, const int* csrRowPtr, const int* csrColInd, int* P)
 		{
 			const auto t1 = get_time_point();
@@ -493,9 +510,9 @@ namespace cuba
 				P
 			);*/
 			/*cusolverSpXcsrsymmdqHost(
-				cusolver, 
-				size, 
-				nnz, 
+				cusolver,
+				size,
+				nnz,
 				Acsr.desc(),
 				csrRowPtr,
 				csrColInd, 
@@ -568,10 +585,7 @@ namespace cuba
 			// set permutation
 			P_.resize(size);
 			cholesky_.reordering(size, nnz, Hsc.rowPtr(), Hsc.colInd(), P_.data());
-			cholesky_.setPermutaion(size, P_.data());
-
-			// print information of Hsc
-			
+			cholesky_.setPermutaion(size, P_.data());	
 
 			// analyze
 			cholesky_.analyze(nnz, Hsc.rowPtr(), Hsc.colInd());

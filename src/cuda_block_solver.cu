@@ -130,8 +130,8 @@ namespace cuba
 		////////////////////////////////////////////////////////////////////////////////////
 
 		/*!
-		* @brief 定义一些简单的赋值操作
-		* @detail 包含加、减、原子加、原子减
+		* @brief 定义一些简单矩阵操作实例
+		* @detail 包含赋值、加、减、原子加、原子减
 		*/
 		using AssignOP = void(*)(Scalar*, Scalar);
 		__device__ inline void ASSIGN(Scalar* address, Scalar value) { *address = value; }
@@ -738,9 +738,9 @@ namespace cuba
 
 		/*!
 		* @brief 构造三维整型向量
-		* @param[in]	i		三维整型向量第一维
-		* @param[in]	j		三维整型向量第二维
-		* @param[in]	k		三维整型向量第三维
+		* @param[in]	i		三维整型向量第一维/row
+		* @param[in]	j		三维整型向量第二维/col
+		* @param[in]	k		三维整型向量第三维/
 		* @return		Vec3i	输出三维整型向量
 		*/
 		__device__ inline Vec3i makeVec3i(int i, int j, int k)
@@ -1050,6 +1050,13 @@ namespace cuba
 			}
 		}
 
+		/*!
+		* @brief 根据稀疏方阵的cholesky重排序结果P对nnzPerRow向量进行置换
+		* @param[in]		size		稀疏矩阵(CSR)维度
+		* @param[in]		srcRowPtr	稀疏矩阵(CSR)rowPtr
+		* @param[in]		P			稀疏矩阵(CSR)cholesky重排向量
+		* @param[in/out]	nnzPerRow	稀疏矩阵(CSR)每行的非零元素
+		*/
 		__global__ void permuteNnzPerRowKernel(int size, const int* srcRowPtr, const int* P, int* nnzPerRow)
 		{
 			const int rowId = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1077,6 +1084,7 @@ namespace cuba
 			}
 		}
 
+		
 		__global__ void schurComplementPostKernel(int cols, LxLBlockPtr invHll, Lx1BlockPtr bl, PxLBlockPtr Hpl,
 			const int* HplColPtr, const int* HplRowInd, Px1BlockPtr xp, Lx1BlockPtr xl)
 		{
@@ -1601,8 +1609,17 @@ namespace cuba
 				);
 		}
 
+		/*!
+		* @brief 使用置换矩阵对向量进行行变换
+		* @detail dst[i]=src[P[i]]
+		* @param[in]	size	向量维度
+		* @param[in]	src		向量指针
+		* @param[out]	dst		向量指针
+		* @param[in]	P		置换矩阵指针
+		*/
 		void permute(int size, const Scalar* src, Scalar* dst, const int* P)
 		{
+			// 根据ptrMap确定输入元素的位置=>ptrDst[i]=ptrSrc[ptrMap[i]]
 			auto ptrSrc = thrust::device_pointer_cast(src);
 			auto ptrDst = thrust::device_pointer_cast(dst);
 			auto ptrMap = thrust::device_pointer_cast(P);
